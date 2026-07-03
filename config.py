@@ -1,6 +1,7 @@
 import os
 
-# Disable ChromaDB anonymous telemetry to prevent annoying console warnings
+# Disable ChromaDB telemetry properly to prevent console errors
+os.environ["CHROMA_TELEMETRY_DISABLED"] = "1"
 os.environ["ANONYMIZED_TELEMETRY"] = "False"
 # Base paths
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -11,9 +12,9 @@ VECTORSTORE_DIR = os.path.join(BASE_DIR, "vectorstore")
 os.makedirs(DATA_DIR, exist_ok=True)
 os.makedirs(VECTORSTORE_DIR, exist_ok=True)
 
-# Chunking configurations
-CHUNK_SIZE = 1000
-CHUNK_OVERLAP = 200
+# Chunking configurations (Smaller chunks = much higher accuracy for specific names)
+CHUNK_SIZE = 300
+CHUNK_OVERLAP = 50
 
 # Embedding model configurations
 EMBEDDING_MODEL_NAME = "BAAI/bge-small-en-v1.5"

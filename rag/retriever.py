@@ -1,58 +1,53 @@
+import logging
+import streamlit as st
 from langchain_chroma import Chroma
 from config import VECTORSTORE_DIR
 from embeddings.embedding import get_embedding_model
 
-def store_chunks_in_chroma(chunks):
-    """
-    Takes the chunked documents, generates embeddings for them, and stores them in ChromaDB.
-    
-    Why Vector Databases?
-    Traditional SQL databases search for exact keyword matches.
-    Vector databases (like ChromaDB) store the dense number arrays (embeddings). 
-    This allows us to perform "Similarity Search". We can compare the numbers to find 
-    text that is *semantically* similar, even if the exact keywords don't match.
-    
-    Args:
-        chunks (list): List of LangChain Document objects (our chunked text).
-        
-    Returns:
-        Chroma: The initialized vector store object.
-    """
-    print(f"Initializing embedding model for vector store...")
-    embeddings = get_embedding_model()
-    
-    print(f"Storing {len(chunks)} chunks in ChromaDB at: {VECTORSTORE_DIR}")
-    # Chroma.from_documents does two things:
-    # 1. Calls the embedding model to convert the text of each chunk into a vector.
-    # 2. Stores the vector and the original text in the local directory.
-    vectorstore = Chroma.from_documents(
-        documents=chunks,
-        embedding=embeddings,
-        persist_directory=VECTORSTORE_DIR
-    )
-    
-    print("Successfully stored chunks in vector database.")
-    return vectorstore
+logger = logging.getLogger(__name__)
 
-def get_retriever():
+@st.cache_resource
+def get_vectorstore():
     """
-    Initializes a retriever object from the existing ChromaDB.
-    
-    The Retriever is the interface that takes a query, converts it to an embedding,
-    compares it against the database (using Cosine Similarity internally), and returns
-    the top K most similar chunks.
-    
-    Returns:
-        VectorStoreRetriever: The LangChain retriever object.
+    Initializes and returns the Chroma vector store.
+    Cached using Streamlit so only ONE instance connects to the SQLite database,
+    preventing file lock freezes on Windows!
     """
+    logger.info("Initializing cached ChromaDB instance...")
     embeddings = get_embedding_model()
-    
-    # Load the existing database from disk
-    vectorstore = Chroma(
+    return Chroma(
         persist_directory=VECTORSTORE_DIR,
         embedding_function=embeddings
     )
-    
-    # Create a retriever that returns the top 3 most relevant chunks
-    retriever = vectorstore.as_retriever(search_kwargs={"k": 3})
-    return retriever
+
+def store_chunks_in_chroma(chunks):
+    """
+    Takes the chunked documents and adds them to the cached ChromaDB instance.
+    """
+    if not chunks:
+        logger.warning("No chunks provided to store in ChromaDB.")
+        return None
+
+    try:
+        logger.info(f"Storing {len(chunks)} chunks in ChromaDB at: {VECTORSTORE_DIR}")
+        vectorstore = get_vectorstore()
+        vectorstore.add_documents(chunks)
+        
+        logger.info("Successfully stored chunks in vector database.")
+        return vectorstore
+    except Exception as e:
+        logger.error(f"Error storing chunks in ChromaDB: {e}")
+        return None
+
+def get_retriever():
+    """
+    Returns a retriever object from the cached ChromaDB instance.
+    """
+    try:
+        vectorstore = get_vectorstore()
+        # Create a retriever that returns the top 15 most relevant chunks (smaller chunks, wider net)
+        retriever = vectorstore.as_retriever(search_kwargs={"k": 15})
+        return retriever
+    except Exception as e:
+        logger.error(f"Error initializing retriever: {e}")
+        return None
